@@ -1,0 +1,8 @@
+{
+  "name": "PAL HR Evaluation & Editor",
+  "description": "Système d'évaluation du personnel du Port Autonome de Lomé avec éditeur de photo de profil assisté par IA (Gemini).",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
