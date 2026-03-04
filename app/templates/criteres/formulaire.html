@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{% if action == 'nouveau' %}Nouveau critère{% else %}Modifier critère{% endif %}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-4 gap-2">
+  <a href="{{ url_for('criteres.liste') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0">
+    {% if action == 'nouveau' %}
+      <i class="bi bi-plus-circle me-2 text-primary"></i>Nouveau critère
+    {% else %}
+      <i class="bi bi-pencil me-2 text-secondary"></i>Modifier critère
+    {% endif %}
+  </h4>
+</div>
+
+<div class="card" style="max-width:560px">
+  <div class="card-body">
+    <form method="post">
+      <div class="mb-3">
+        <label class="form-label">Libellé <span class="text-danger">*</span></label>
+        <input type="text" name="libelle" class="form-control"
+               value="{{ form.libelle if form.libelle else '' }}"
+               placeholder="ex: Qualité du travail" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Description</label>
+        <textarea name="description" class="form-control" rows="3"
+                  placeholder="Description détaillée du critère…">{{ form.description if form.description else '' }}</textarea>
+      </div>
+      <div class="row g-3">
+        <div class="col-sm-6">
+          <label class="form-label">Catégorie</label>
+          <input type="text" name="categorie" class="form-control"
+                 value="{{ form.categorie if form.categorie else '' }}"
+                 list="categories-list"
+                 placeholder="ex: Performance">
+          <datalist id="categories-list">
+            <option value="Performance">
+            <option value="Comportement">
+            <option value="Compétences">
+            <option value="Management">
+            <option value="Général">
+          </datalist>
+        </div>
+        <div class="col-sm-6">
+          <label class="form-label">Pondération (%) <span class="text-danger">*</span></label>
+          <input type="number" name="ponderation" class="form-control" min="1" max="100"
+                 value="{{ form.ponderation if form.ponderation else 10 }}" required>
+          <div class="form-text">La somme de tous les critères actifs devrait être 100%.</div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save me-1"></i>
+          {% if action == 'nouveau' %}Créer{% else %}Enregistrer{% endif %}
+        </button>
+        <a href="{{ url_for('criteres.liste') }}" class="btn btn-outline-secondary">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

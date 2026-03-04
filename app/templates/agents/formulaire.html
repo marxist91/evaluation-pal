@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{% if action == 'nouveau' %}Nouvel agent{% else %}Modifier agent{% endif %}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-4 gap-2">
+  <a href="{{ url_for('agents.liste') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0">
+    {% if action == 'nouveau' %}
+      <i class="bi bi-person-plus me-2 text-primary"></i>Nouvel agent
+    {% else %}
+      <i class="bi bi-pencil me-2 text-secondary"></i>Modifier – {{ agent.nom_complet }}
+    {% endif %}
+  </h4>
+</div>
+
+<div class="card" style="max-width:760px">
+  <div class="card-body">
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Matricule <span class="text-danger">*</span></label>
+          <input type="text" name="matricule" class="form-control"
+                 value="{{ form.matricule if form.matricule else '' }}"
+                 {% if action == 'modifier' %}value="{{ agent.matricule }}"{% endif %}
+                 placeholder="ex: PAL-2024-001" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Nom <span class="text-danger">*</span></label>
+          <input type="text" name="nom" class="form-control"
+                 value="{{ form.nom if form.nom else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Prénom <span class="text-danger">*</span></label>
+          <input type="text" name="prenom" class="form-control"
+                 value="{{ form.prenom if form.prenom else '' }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Poste occupé <span class="text-danger">*</span></label>
+          <input type="text" name="poste" class="form-control"
+                 value="{{ form.poste if form.poste else '' }}"
+                 placeholder="ex: Agent d'exploitation" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Service / Direction <span class="text-danger">*</span></label>
+          <input type="text" name="service" class="form-control"
+                 value="{{ form.service if form.service else '' }}"
+                 placeholder="ex: Direction des opérations" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Catégorie</label>
+          <select name="categorie" class="form-select">
+            <option value="">– Choisir –</option>
+            {% for cat in ['A1','A2','B1','B2','C1','C2','D','Cadre','Maîtrise','Exécution'] %}
+              <option value="{{ cat }}"
+                {% if form.categorie == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Date d'embauche</label>
+          <input type="date" name="date_embauche" class="form-control"
+                 value="{{ form.date_embauche.isoformat() if form.date_embauche else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Téléphone</label>
+          <input type="tel" name="telephone" class="form-control"
+                 value="{{ form.telephone if form.telephone else '' }}"
+                 placeholder="+228 XX XX XX XX">
+        </div>
+        <div class="col-md-8">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control"
+                 value="{{ form.email if form.email else '' }}"
+                 placeholder="prenom.nom@pal.tg">
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">
+          <i class="bi bi-save me-1"></i>
+          {% if action == 'nouveau' %}Créer l'agent{% else %}Enregistrer{% endif %}
+        </button>
+        <a href="{{ url_for('agents.liste') }}" class="btn btn-outline-secondary">Annuler</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Critères d'évaluation{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>Critères d'évaluation</h4>
+    <small class="text-muted">
+      Pondération totale (critères actifs) :
+      <strong class="{% if total_poids == 100 %}text-success{% else %}text-warning{% endif %}">
+        {{ total_poids }}%
+      </strong>
+      {% if total_poids != 100 %}
+        <span class="text-warning">(idéalement 100%)</span>
+      {% endif %}
+    </small>
+  </div>
+  <a href="{{ url_for('criteres.nouveau') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle me-1"></i>Nouveau critère
+  </a>
+</div>
+
+{% set categories = criteres | map(attribute='categorie') | list | unique | sort %}
+{% for cat in categories %}
+  <div class="card mb-3">
+    <div class="card-header bg-light fw-semibold">
+      <i class="bi bi-tag me-2"></i>{{ cat or 'Sans catégorie' }}
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Libellé</th>
+            <th>Description</th>
+            <th class="text-end">Pondération</th>
+            <th>Statut</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in criteres if c.categorie == cat %}
+          <tr class="{% if not c.actif %}text-muted{% endif %}">
+            <td>{{ c.libelle }}</td>
+            <td class="text-muted small">{{ c.description or '–' }}</td>
+            <td class="text-end"><span class="badge bg-secondary">{{ c.ponderation }}%</span></td>
+            <td>
+              {% if c.actif %}
+                <span class="badge bg-success">Actif</span>
+              {% else %}
+                <span class="badge bg-secondary">Désactivé</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('criteres.modifier', critere_id=c.id) }}" class="btn btn-sm btn-outline-secondary me-1" title="Modifier">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form method="post" action="{{ url_for('criteres.supprimer', critere_id=c.id) }}" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-outline-{{ 'warning' if c.actif else 'success' }}" title="{{ 'Désactiver' if c.actif else 'Activer' }}">
+                  <i class="bi bi-toggle-{{ 'on' if c.actif else 'off' }}"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="card-body text-center text-muted py-5">
+      <i class="bi bi-list-check fs-1 d-block mb-2"></i>
+      Aucun critère défini.
+      <a href="{{ url_for('criteres.nouveau') }}">Ajouter le premier critère</a>
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

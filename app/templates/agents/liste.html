@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Agents{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-people me-2 text-primary"></i>Agents</h4>
+  <a href="{{ url_for('agents.nouveau') }}" class="btn btn-primary">
+    <i class="bi bi-person-plus me-1"></i>Nouveau agent
+  </a>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form class="row g-2 align-items-end" method="get">
+      <div class="col-sm-4">
+        <label class="form-label small mb-1">Recherche</label>
+        <input type="text" name="q" class="form-control form-control-sm" placeholder="Nom, prénom, matricule…" value="{{ q }}">
+      </div>
+      <div class="col-sm-3">
+        <label class="form-label small mb-1">Service</label>
+        <select name="service" class="form-select form-select-sm">
+          <option value="">Tous les services</option>
+          {% for s in services %}
+            <option value="{{ s }}" {% if service == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label small mb-1">Statut</label>
+        <select name="actif" class="form-select form-select-sm">
+          <option value="" {% if actif == '' %}selected{% endif %}>Tous</option>
+          <option value="1" {% if actif == '1' %}selected{% endif %}>Actifs</option>
+          <option value="0" {% if actif == '0' %}selected{% endif %}>Inactifs</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-sm btn-secondary">
+          <i class="bi bi-search me-1"></i>Filtrer
+        </button>
+        <a href="{{ url_for('agents.liste') }}" class="btn btn-sm btn-outline-secondary ms-1">
+          <i class="bi bi-x"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    {% if agents %}
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Matricule</th>
+          <th>Nom complet</th>
+          <th>Poste</th>
+          <th>Service</th>
+          <th>Catégorie</th>
+          <th>Statut</th>
+          <th>Évaluations</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for agent in agents %}
+        <tr>
+          <td><code>{{ agent.matricule }}</code></td>
+          <td>
+            <a href="{{ url_for('agents.detail', agent_id=agent.id) }}" class="text-decoration-none fw-semibold">
+              {{ agent.nom_complet }}
+            </a>
+          </td>
+          <td>{{ agent.poste }}</td>
+          <td>{{ agent.service }}</td>
+          <td>{{ agent.categorie or '–' }}</td>
+          <td>
+            {% if agent.actif %}
+              <span class="badge bg-success">Actif</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactif</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge bg-light text-dark border">{{ agent.evaluations | length }}</span>
+          </td>
+          <td>
+            <a href="{{ url_for('agents.detail', agent_id=agent.id) }}" class="btn btn-sm btn-outline-primary me-1" title="Voir">
+              <i class="bi bi-eye"></i>
+            </a>
+            <a href="{{ url_for('agents.modifier', agent_id=agent.id) }}" class="btn btn-sm btn-outline-secondary" title="Modifier">
+              <i class="bi bi-pencil"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-people fs-1 d-block mb-2"></i>
+        Aucun agent trouvé.
+        {% if not q and not service %}
+          <a href="{{ url_for('agents.nouveau') }}">Ajouter le premier agent</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+  {% if agents %}
+  <div class="card-footer text-muted small">
+    {{ agents | length }} agent(s) affiché(s)
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

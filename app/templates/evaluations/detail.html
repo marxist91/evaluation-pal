@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Évaluation – {{ evaluation.agent.nom_complet }} {{ evaluation.annee }}{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-3 gap-2 no-print">
+  <a href="{{ url_for('evaluations.liste') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i>
+  </a>
+  <h4 class="mb-0">
+    <i class="bi bi-clipboard2-check me-2 text-primary"></i>Fiche d'évaluation
+  </h4>
+  <div class="ms-auto d-flex gap-2">
+    {% if evaluation.statut == 'Brouillon' %}
+      <a href="{{ url_for('evaluations.modifier', eval_id=evaluation.id) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-pencil me-1"></i>Modifier
+      </a>
+      <form method="post" action="{{ url_for('evaluations.finaliser', eval_id=evaluation.id) }}" class="d-inline">
+        <button type="submit" class="btn btn-sm btn-success">
+          <i class="bi bi-patch-check me-1"></i>Finaliser
+        </button>
+      </form>
+    {% endif %}
+    <button onclick="window.print()" class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-printer me-1"></i>Imprimer
+    </button>
+    <form method="post" action="{{ url_for('evaluations.supprimer', eval_id=evaluation.id) }}" class="d-inline"
+          onsubmit="return confirm('Supprimer cette évaluation ?')">
+      <button type="submit" class="btn btn-sm btn-outline-danger">
+        <i class="bi bi-trash me-1"></i>Supprimer
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- Header card -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-6">
+        <h5 class="fw-bold text-primary">Port Autonome de Lomé</h5>
+        <p class="mb-1 text-muted small">Système d'évaluation du personnel</p>
+        <hr class="my-2">
+        <dl class="row mb-0 small">
+          <dt class="col-5">Agent</dt>
+          <dd class="col-7 fw-semibold">{{ evaluation.agent.nom_complet }}</dd>
+          <dt class="col-5">Matricule</dt>
+          <dd class="col-7"><code>{{ evaluation.agent.matricule }}</code></dd>
+          <dt class="col-5">Poste</dt>
+          <dd class="col-7">{{ evaluation.agent.poste }}</dd>
+          <dt class="col-5">Service</dt>
+          <dd class="col-7">{{ evaluation.agent.service }}</dd>
+        </dl>
+      </div>
+      <div class="col-md-6 text-md-end">
+        <dl class="row mb-0 small">
+          <dt class="col-5 text-start">Période</dt>
+          <dd class="col-7 text-start">{{ evaluation.annee }} – {{ evaluation.periode }}</dd>
+          <dt class="col-5 text-start">Date</dt>
+          <dd class="col-7 text-start">
+            {{ evaluation.date_evaluation.strftime('%d/%m/%Y') if evaluation.date_evaluation else '–' }}
+          </dd>
+          <dt class="col-5 text-start">Évaluateur</dt>
+          <dd class="col-7 text-start fw-semibold">{{ evaluation.evaluateur }}</dd>
+          <dt class="col-5 text-start">Statut</dt>
+          <dd class="col-7 text-start">
+            {% if evaluation.statut == "Finalisée" %}
+              <span class="badge badge-finalisee text-white">Finalisée</span>
+            {% else %}
+              <span class="badge badge-brouillon">Brouillon</span>
+            {% endif %}
+          </dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Evaluation grid -->
+<div class="card mb-3">
+  <div class="card-header bg-white fw-semibold">
+    <i class="bi bi-list-check me-2"></i>Grille d'évaluation
+  </div>
+  <div class="card-body p-0">
+    {% set categories = evaluation.details | map(attribute='critere') | map(attribute='categorie') | list | unique | sort %}
+    {% for cat in categories %}
+      <div class="px-3 pt-3">
+        <h6 class="text-uppercase text-muted small fw-bold">
+          <i class="bi bi-tag me-1"></i>{{ cat or 'Général' }}
+        </h6>
+      </div>
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Critère</th>
+            <th class="text-center" style="width:90px">Poids</th>
+            <th class="text-center" style="width:100px">Note /20</th>
+            <th>Commentaire</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in evaluation.details if d.critere.categorie == cat %}
+          <tr>
+            <td>{{ d.critere.libelle }}</td>
+            <td class="text-center"><span class="badge bg-secondary">{{ d.critere.ponderation }}%</span></td>
+            <td class="text-center">
+              {% if d.note is not none %}
+                <strong
+                  {% if d.note >= 16 %}class="text-success"
+                  {% elif d.note >= 10 %}class="text-primary"
+                  {% else %}class="text-danger"{% endif %}>
+                  {{ d.note }}
+                </strong>
+              {% else %}
+                <span class="text-muted">–</span>
+              {% endif %}
+            </td>
+            <td class="text-muted small">{{ d.commentaire or '–' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="text-center text-muted py-3">Aucun détail enregistré.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Summary -->
+<div class="card">
+  <div class="card-body">
+    <div class="row align-items-center">
+      <div class="col-md-6">
+        <h5>
+          Note globale :
+          <span class="display-6 fw-bold
+            {% if evaluation.note_globale >= 15 %}text-success
+            {% elif evaluation.note_globale >= 10 %}text-primary
+            {% else %}text-danger{% endif %}">
+            {{ evaluation.note_globale }}/20
+          </span>
+        </h5>
+        <p class="mb-0">
+          Appréciation :
+          {% set note = evaluation.note_globale %}
+          {% if note >= 18 %}
+            <span class="badge bg-success fs-6">{{ evaluation.appreciation }}</span>
+          {% elif note >= 15 %}
+            <span class="badge bg-success fs-6">{{ evaluation.appreciation }}</span>
+          {% elif note >= 12 %}
+            <span class="badge bg-primary fs-6">{{ evaluation.appreciation }}</span>
+          {% elif note >= 10 %}
+            <span class="badge bg-info fs-6">{{ evaluation.appreciation }}</span>
+          {% elif note >= 7 %}
+            <span class="badge bg-warning text-dark fs-6">{{ evaluation.appreciation }}</span>
+          {% else %}
+            <span class="badge bg-danger fs-6">{{ evaluation.appreciation }}</span>
+          {% endif %}
+        </p>
+      </div>
+      <div class="col-md-6">
+        {% if evaluation.commentaire_general %}
+          <blockquote class="blockquote mb-0">
+            <p class="fs-6 fst-italic">« {{ evaluation.commentaire_general }} »</p>
+            <footer class="blockquote-footer">{{ evaluation.evaluateur }}</footer>
+          </blockquote>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
