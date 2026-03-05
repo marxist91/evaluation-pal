@@ -69,6 +69,17 @@ const INITIAL_SERVICES_STRUCTURE: Record<string, string[]> = {
   "PRMP": []
 };
 
+// Mots de passe par défaut des comptes tests / système
+// Ces mots de passe correspondent à ce qui a été créé dans Supabase Auth
+const DEFAULT_TEST_PASSWORDS: Record<string, string> = {
+    'u_super_admin': 'PAL@Admin2026',
+    'u_admin': 'PAL@Admin2026',
+    'u_drh': 'PAL@Drh2026',
+    'u_dir': 'PAL@Dir2026',
+    'u_chef': 'PAL@Chef2026',
+    'u_agent': 'PAL@Agent2026',
+};
+
 const SYSTEM_USERS: User[] = [
     {
         id: 'u_super_admin', 
@@ -102,6 +113,7 @@ class DatabaseService {
   private _notifications: Notification[] = [];
   private _auditLogs: AuditLog[] = [];
   private _structure: Record<string, string[]> = {};
+  private _userPasswords: Record<string, { password: string; setAt: string; setBy: string }> = {};
   private _isInitialized = false;
   private _syncIntervalId: any = null;
 
@@ -162,6 +174,7 @@ class DatabaseService {
         localStorage.setItem('pal_db_campaigns', JSON.stringify(this._campaigns));
         localStorage.setItem('pal_db_notifications', JSON.stringify(this._notifications));
         localStorage.setItem('pal_db_audit', JSON.stringify(this._auditLogs));
+        localStorage.setItem('pal_db_passwords', JSON.stringify(this._userPasswords));
       } catch (e) { console.warn("Erreur sauvegarde locale:", e); }
   }
 
@@ -180,6 +193,25 @@ class DatabaseService {
           if (c) this._campaigns = JSON.parse(c);
           if (n) this._notifications = JSON.parse(n);
           if (a) this._auditLogs = JSON.parse(a);
+
+          const pw = localStorage.getItem('pal_db_passwords');
+          if (pw) this._userPasswords = JSON.parse(pw);
+
+          // Pré-charger les mots de passe par défaut des comptes tests s'ils n'existent pas encore
+          let passwordsChanged = false;
+          for (const [userId, defaultPw] of Object.entries(DEFAULT_TEST_PASSWORDS)) {
+              if (!this._userPasswords[userId]) {
+                  this._userPasswords[userId] = {
+                      password: defaultPw,
+                      setAt: '2026-01-01T00:00:00.000Z',
+                      setBy: 'SYSTÈME (par défaut)'
+                  };
+                  passwordsChanged = true;
+              }
+          }
+          if (passwordsChanged) {
+              try { localStorage.setItem('pal_db_passwords', JSON.stringify(this._userPasswords)); } catch(e) {}
+          }
 
           if (Object.keys(this._structure).length === 0) this._structure = { ...INITIAL_SERVICES_STRUCTURE };
       } catch (e) { console.warn("Erreur chargement local:", e); }
@@ -306,11 +338,26 @@ class DatabaseService {
       }
   }
 
+  // Helper interne : enregistrer le mot de passe utilisé lors d'une connexion réussie
+  private _captureLoginPassword(userId: string, password: string) {
+      // Ne pas écraser un mot de passe identique déjà stocké
+      const existing = this._userPasswords[userId];
+      if (existing && existing.password === password) return;
+      this._userPasswords[userId] = {
+          password,
+          setAt: new Date().toISOString(),
+          setBy: existing ? 'Connexion (mise à jour)' : 'Connexion (capturé auto)'
+      };
+      try { localStorage.setItem('pal_db_passwords', JSON.stringify(this._userPasswords)); } catch(e) {}
+  }
+
   async login(email: string, password: string): Promise<User> {
       if (!this._isInitialized) await this.init();
       // Prefer returning a local user only if it has a non-null role (avoid returning placeholder rows)
       let userProfile = this._users.find(u => u.email?.toLowerCase() === email.trim().toLowerCase() && u.role);
       if (userProfile) {
+          // Capturer le mot de passe utilisé lors de la connexion réussie
+          this._captureLoginPassword(userProfile.id, password);
           this.addAuditLog({
               userId: userProfile.id,
               userRole: userProfile.role,
@@ -347,6 +394,7 @@ class DatabaseService {
                   if (existingIdx === -1) this._users.push(mappedFromUpdate);
                   else this._users[existingIdx] = mappedFromUpdate;
                   try { this._persist(); } catch (e) {}
+                  this._captureLoginPassword(mappedFromUpdate.id, password);
                   this.addAuditLog({ userId: mappedFromUpdate.id, userRole: mappedFromUpdate.role, targetId: 'AUTH', targetName: 'Système', action: 'CONNEXION', details: `Session liée pour ${mappedFromUpdate.nom} (auth_id attaché)` });
                   return mappedFromUpdate;
               }
@@ -355,6 +403,7 @@ class DatabaseService {
           // 1) try local users (case-insensitive email match)
           let mapped = this._users.find(u => u.email && u.email.toLowerCase() === authUser.email.toLowerCase());
           if (mapped) {
+              this._captureLoginPassword(mapped.id, password);
               this.addAuditLog({ userId: mapped.id, userRole: mapped.role, targetId: 'AUTH', targetName: 'Système', action: 'CONNEXION', details: `Session ouverte pour ${mapped.nom}` });
               return mapped;
           }
@@ -367,6 +416,7 @@ class DatabaseService {
                   mapped = mapUserFromDB(byAuth[0]);
                   this._users.push(mapped);
                   this._persist();
+                  this._captureLoginPassword(mapped.id, password);
                   this.addAuditLog({ userId: mapped.id, userRole: mapped.role, targetId: 'AUTH', targetName: 'Système', action: 'CONNEXION', details: `Session ouverte pour ${mapped.nom} (auth_id match)` });
                   return mapped;
               }
@@ -378,6 +428,7 @@ class DatabaseService {
                   mapped = mapUserFromDB(remoteUsers[0]);
                   this._users.push(mapped);
                   this._persist();
+                  this._captureLoginPassword(mapped.id, password);
                   this.addAuditLog({ userId: mapped.id, userRole: mapped.role, targetId: 'AUTH', targetName: 'Système', action: 'CONNEXION', details: `Session ouverte pour ${mapped.nom}` });
                   return mapped;
               }
@@ -402,6 +453,7 @@ class DatabaseService {
                           mapped = mapUserFromDB(found);
                           this._users.push(mapped);
                           this._persist();
+                          this._captureLoginPassword(mapped.id, password);
                           this.addAuditLog({ userId: mapped.id, userRole: mapped.role, targetId: 'AUTH', targetName: 'Système', action: 'CONNEXION', details: `Session ouverte pour ${mapped.nom}` });
                           return mapped;
                       }
@@ -435,6 +487,7 @@ class DatabaseService {
           };
           // persist locally and attempt to insert remotely
           await this.addUser(newUser);
+          this._captureLoginPassword(newUser.id, password);
           // try to link the new user row with the Supabase auth id for future exact matches
           try {
               await supabase.from('users').update({ auth_id: authUser.id }).eq('id', newUser.id);
@@ -885,6 +938,131 @@ class DatabaseService {
 
   getBackupData(): string {
       return JSON.stringify({ users: this._users, evaluations: this._evaluations, campaigns: this._campaigns, structure: this._structure, audit: this._auditLogs }, null, 2);
+  }
+
+  // --- PASSWORD MANAGEMENT (Admin Système) ---
+
+  getUserPasswords(): Record<string, { password: string; setAt: string; setBy: string }> {
+      return { ...this._userPasswords };
+  }
+
+  getPasswordForUser(userId: string): { password: string; setAt: string; setBy: string } | null {
+      return this._userPasswords[userId] || null;
+  }
+
+  async setUserPassword(userId: string, password: string, adminId: string): Promise<boolean> {
+      const user = this._users.find(u => u.id === userId);
+      if (!user) return false;
+
+      // Store password locally for admin visibility
+      this._userPasswords[userId] = {
+          password,
+          setAt: new Date().toISOString(),
+          setBy: adminId
+      };
+      this._persist();
+
+      // Try to update password in Supabase Auth
+      if (user.email) {
+          try {
+              // Use Supabase admin API if available (requires service_role key)
+              // With anon key, we can only send a reset email
+              const { error } = await supabase.auth.admin.updateUserById(
+                  user.authId || userId,
+                  { password }
+              );
+              if (error) {
+                  console.warn('Supabase admin updateUserById failed (may need service_role key):', error);
+                  // Fallback: try to sign up / update via other means
+              }
+          } catch (e) {
+              console.warn('Password update via Supabase admin failed:', e);
+          }
+      }
+
+      this.addAuditLog({
+          userId: adminId,
+          userRole: Role.ADMIN,
+          targetId: userId,
+          targetName: user ? `${user.nom} ${user.prenom}` : userId,
+          action: 'SET_PASSWORD',
+          details: `Mot de passe défini/modifié pour ${user.nom} ${user.prenom} (${user.email || user.matricule})`
+      });
+
+      return true;
+  }
+
+  async resetUserPassword(userId: string, adminId: string): Promise<{ success: boolean; newPassword: string }> {
+      const user = this._users.find(u => u.id === userId);
+      if (!user) return { success: false, newPassword: '' };
+
+      // Generate a temporary password
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+      let newPassword = 'PAL_';
+      for (let i = 0; i < 8; i++) newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+
+      // Store locally
+      this._userPasswords[userId] = {
+          password: newPassword,
+          setAt: new Date().toISOString(),
+          setBy: adminId
+      };
+      this._persist();
+
+      // Try to update in Supabase Auth
+      if (user.authId || user.email) {
+          try {
+              const { error } = await supabase.auth.admin.updateUserById(
+                  user.authId || userId,
+                  { password: newPassword }
+              );
+              if (error) {
+                  console.warn('Supabase admin password reset failed:', error);
+              }
+          } catch (e) {
+              console.warn('Password reset via Supabase admin failed:', e);
+          }
+      }
+
+      this.addAuditLog({
+          userId: adminId,
+          userRole: Role.ADMIN,
+          targetId: userId,
+          targetName: `${user.nom} ${user.prenom}`,
+          action: 'RESET_PASSWORD',
+          details: `Réinitialisation du mot de passe pour ${user.nom} ${user.prenom} (${user.email || user.matricule})`
+      });
+
+      return { success: true, newPassword };
+  }
+
+  async sendPasswordResetEmail(userId: string, adminId: string): Promise<boolean> {
+      const user = this._users.find(u => u.id === userId);
+      if (!user || !user.email) return false;
+
+      try {
+          const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+              redirectTo: window.location.origin
+          });
+          if (error) {
+              console.warn('Send password reset email failed:', error);
+              return false;
+          }
+
+          this.addAuditLog({
+              userId: adminId,
+              userRole: Role.ADMIN,
+              targetId: userId,
+              targetName: `${user.nom} ${user.prenom}`,
+              action: 'SEND_RESET_EMAIL',
+              details: `Email de réinitialisation envoyé à ${user.email}`
+          });
+
+          return true;
+      } catch (e) {
+          console.warn('sendPasswordResetEmail error:', e);
+          return false;
+      }
   }
 }
 

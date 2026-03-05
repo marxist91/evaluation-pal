@@ -6,7 +6,7 @@ import { User, Role, Permission, AuditLog, Evaluation, Campaign, EvaluationStatu
 import { useToast } from '../context/ToastContext';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
-type Tab = 'STATS' | 'USERS' | 'STRUCTURE' | 'ROLES' | 'AUDIT' | 'SYSTEM';
+type Tab = 'STATS' | 'USERS' | 'STRUCTURE' | 'ROLES' | 'AUDIT' | 'SYSTEM' | 'SECURITE';
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
@@ -23,6 +23,14 @@ const AdminDashboard = () => {
     const [showUserModal, setShowUserModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [formData, setFormData] = useState<Partial<User>>({});
+
+    // Password management states
+    const [userPasswords, setUserPasswords] = useState<Record<string, { password: string; setAt: string; setBy: string }>>({});
+    const [passwordSearch, setPasswordSearch] = useState("");
+    const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
+    const [showSetPasswordModal, setShowSetPasswordModal] = useState<User | null>(null);
+    const [newPasswordInput, setNewPasswordInput] = useState("");
+    const [resetConfirm, setResetConfirm] = useState<string | null>(null);
     
     const [searchTerm, setSearchTerm] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("ALL");
@@ -48,7 +56,63 @@ const AdminDashboard = () => {
         setAuditLogs(db.getAuditLogs());
         setEvaluations(db.getEvaluations());
         setCampaigns(db.getCampaigns());
+        setUserPasswords(db.getUserPasswords());
     };
+
+    const togglePasswordVisibility = (userId: string) => {
+        setVisiblePasswords(prev => {
+            const next = new Set(prev);
+            if (next.has(userId)) next.delete(userId);
+            else next.add(userId);
+            return next;
+        });
+    };
+
+    const handleSetPassword = async (user: User) => {
+        if (!newPasswordInput || newPasswordInput.length < 6) {
+            showToast("Le mot de passe doit contenir au moins 6 caractères", "error");
+            return;
+        }
+        const ok = await db.setUserPassword(user.id, newPasswordInput, 'ADMIN');
+        if (ok) {
+            showToast(`Mot de passe défini pour ${user.nom} ${user.prenom}`, "success");
+            setShowSetPasswordModal(null);
+            setNewPasswordInput("");
+            refreshData();
+        } else {
+            showToast("Erreur lors de la définition du mot de passe", "error");
+        }
+    };
+
+    const handleResetPassword = async (user: User) => {
+        const result = await db.resetUserPassword(user.id, 'ADMIN');
+        if (result.success) {
+            showToast(`Mot de passe réinitialisé pour ${user.nom}: ${result.newPassword}`, "success");
+            setResetConfirm(null);
+            refreshData();
+        } else {
+            showToast("Erreur lors de la réinitialisation", "error");
+        }
+    };
+
+    const handleSendResetEmail = async (user: User) => {
+        const ok = await db.sendPasswordResetEmail(user.id, 'ADMIN');
+        if (ok) {
+            showToast(`Email de réinitialisation envoyé à ${user.email}`, "success");
+        } else {
+            showToast("Erreur d'envoi. Vérifiez que l'email est configuré.", "error");
+        }
+    };
+
+    const filteredPasswordUsers = useMemo(() => {
+        const s = passwordSearch.toLowerCase();
+        return users.filter(u => {
+            if (!s) return true;
+            return `${u.nom} ${u.prenom}`.toLowerCase().includes(s) ||
+                   u.matricule.toLowerCase().includes(s) ||
+                   (u.email && u.email.toLowerCase().includes(s));
+        });
+    }, [users, passwordSearch]);
 
     const handleNominate = async (userId: string) => {
         if (!showNominationModal) return;
@@ -235,6 +299,7 @@ const AdminDashboard = () => {
                     { id: 'USERS', icon: 'fa-users', label: 'Utilisateurs' },
                     { id: 'ROLES', icon: 'fa-user-shield', label: 'Permissions' },
                     { id: 'AUDIT', icon: 'fa-fingerprint', label: 'Audit Log' },
+                    { id: 'SECURITE', icon: 'fa-key', label: 'Mots de passe' },
                     { id: 'SYSTEM', icon: 'fa-server', label: 'Maintenance' },
                 ].map((t) => (
                     <button key={t.id} onClick={() => setActiveTab(t.id as Tab)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center gap-2 whitespace-nowrap ${activeTab === t.id ? 'bg-pal-500 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><i className={`fas ${t.icon}`}></i> {t.label}</button>
@@ -534,6 +599,139 @@ const AdminDashboard = () => {
                 </div>
             )}
 
+            {activeTab === 'SECURITE' && (
+                <div className="space-y-8 animate-fade-in-up">
+                    {/* Header */}
+                    <div className="bg-pal-500 p-12 rounded-[3rem] text-white relative overflow-hidden shadow-2xl">
+                        <h3 className="text-2xl font-black uppercase tracking-[0.2em] mb-4">Gestion des Mots de Passe</h3>
+                        <p className="text-white/60 text-sm max-w-lg italic font-medium leading-relaxed">Consultez les mots de passe définis pour chaque utilisateur. Réinitialisez-les en cas d'oubli ou de perte d'accès.</p>
+                        <i className="fas fa-user-lock absolute -right-10 -bottom-10 text-[15rem] text-white/5"></i>
+                    </div>
+
+                    {/* Stats cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-slate-50 flex items-center justify-between">
+                            <div><p className="text-[10px] font-black uppercase text-slate-400">Utilisateurs</p><h4 className="text-3xl font-black">{users.length}</h4></div>
+                            <div className="w-14 h-14 rounded-2xl bg-pal-500 text-white flex items-center justify-center text-xl shadow-lg"><i className="fas fa-users"></i></div>
+                        </div>
+                        <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-slate-50 flex items-center justify-between">
+                            <div><p className="text-[10px] font-black uppercase text-slate-400">MDP Définis</p><h4 className="text-3xl font-black">{Object.keys(userPasswords).length}</h4></div>
+                            <div className="w-14 h-14 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-xl shadow-lg"><i className="fas fa-lock"></i></div>
+                        </div>
+                        <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-slate-50 flex items-center justify-between">
+                            <div><p className="text-[10px] font-black uppercase text-slate-400">Sans MDP</p><h4 className="text-3xl font-black text-amber-500">{users.length - Object.keys(userPasswords).length}</h4></div>
+                            <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-lg"><i className="fas fa-exclamation-triangle"></i></div>
+                        </div>
+                    </div>
+
+                    {/* Search */}
+                    <div className="bg-white p-6 rounded-[2rem] border border-slate-100 flex items-center shadow-sm gap-4">
+                        <i className="fas fa-search text-pal-500"></i>
+                        <input type="text" placeholder="Rechercher un utilisateur par nom, matricule ou email..." value={passwordSearch} onChange={e => setPasswordSearch(e.target.value)} className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 outline-none font-bold text-sm text-slate-700 placeholder-slate-300" />
+                    </div>
+
+                    {/* Users password table */}
+                    <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-100">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                                    <tr>
+                                        <th className="px-8 py-5">Utilisateur</th>
+                                        <th className="px-8 py-5">Email</th>
+                                        <th className="px-8 py-5">Mot de passe</th>
+                                        <th className="px-8 py-5">Défini le</th>
+                                        <th className="px-8 py-5 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredPasswordUsers.map(u => {
+                                        const pwData = userPasswords[u.id];
+                                        const isVisible = visiblePasswords.has(u.id);
+                                        return (
+                                            <tr key={u.id} className="hover:bg-pal-50/20 transition group">
+                                                <td className="px-8 py-5 flex items-center gap-4">
+                                                    <div className="w-10 h-10 bg-pal-500 text-white flex items-center justify-center rounded-xl font-black flex-shrink-0 uppercase shadow-sm text-xs">{u.nom?.[0] ?? '?'}</div>
+                                                    <div className="overflow-hidden">
+                                                        <p className="font-black text-slate-800 text-sm truncate">{u.nom} {u.prenom}</p>
+                                                        <p className="text-[9px] font-mono text-slate-400 truncate uppercase">{u.matricule}</p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-5">
+                                                    <p className="text-xs font-bold text-slate-600">{u.email || <span className="text-slate-300 italic">Non défini</span>}</p>
+                                                </td>
+                                                <td className="px-8 py-5">
+                                                    {pwData ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <code className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold ${isVisible ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-400'}`}>
+                                                                {isVisible ? pwData.password : '••••••••••'}
+                                                            </code>
+                                                            <button onClick={() => togglePasswordVisibility(u.id)} className="text-slate-300 hover:text-pal-500 transition p-1" title={isVisible ? 'Masquer' : 'Afficher'}>
+                                                                <i className={`fas ${isVisible ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                                            </button>
+                                                            {isVisible && (
+                                                                <button onClick={() => { navigator.clipboard.writeText(pwData.password); showToast('Mot de passe copié', 'success'); }} className="text-slate-300 hover:text-pal-500 transition p-1" title="Copier">
+                                                                    <i className="fas fa-copy"></i>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[10px] font-black uppercase px-3 py-1 rounded-full bg-amber-50 text-amber-500 border border-amber-100">Non défini</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-8 py-5">
+                                                    {pwData ? (
+                                                        <div>
+                                                            <p className="text-[10px] font-bold text-slate-500">{new Date(pwData.setAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                                            <p className="text-[8px] font-medium text-slate-300 uppercase">Par: {pwData.setBy}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-slate-200">—</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-8 py-5 text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => { setShowSetPasswordModal(u); setNewPasswordInput(''); }} className="px-3 py-2 bg-pal-50 text-pal-500 rounded-xl text-[9px] font-black uppercase hover:bg-pal-100 transition" title="Définir un mot de passe">
+                                                            <i className="fas fa-pen mr-1"></i> Définir
+                                                        </button>
+                                                        <button onClick={() => setResetConfirm(u.id)} className="px-3 py-2 bg-amber-50 text-amber-600 rounded-xl text-[9px] font-black uppercase hover:bg-amber-100 transition" title="Réinitialiser">
+                                                            <i className="fas fa-redo mr-1"></i> Reset
+                                                        </button>
+                                                        {u.email && (
+                                                            <button onClick={() => handleSendResetEmail(u)} className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-[9px] font-black uppercase hover:bg-blue-100 transition" title="Envoyer email de réinitialisation">
+                                                                <i className="fas fa-envelope mr-1"></i> Email
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Légende */}
+                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Légende des Actions</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-pal-50 text-pal-500 rounded-lg flex items-center justify-center"><i className="fas fa-pen text-xs"></i></div>
+                                <div><p className="text-xs font-bold text-slate-700">Définir</p><p className="text-[9px] text-slate-400">Saisir manuellement un mot de passe</p></div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center"><i className="fas fa-redo text-xs"></i></div>
+                                <div><p className="text-xs font-bold text-slate-700">Reset</p><p className="text-[9px] text-slate-400">Générer automatiquement un nouveau MDP temporaire</p></div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center"><i className="fas fa-envelope text-xs"></i></div>
+                                <div><p className="text-xs font-bold text-slate-700">Email</p><p className="text-[9px] text-slate-400">Envoyer un lien de réinitialisation par email</p></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'SYSTEM' && (
                 <div className="space-y-8 animate-fade-in-up">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -624,6 +822,81 @@ const AdminDashboard = () => {
                     </div>
                 </div>
             )}
+
+            {/* Modal: Définir un mot de passe */}
+            {showSetPasswordModal && (
+                <div className="fixed inset-0 bg-pal-900/70 backdrop-blur-xl flex items-center justify-center z-[300] p-4">
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up">
+                        <div className="bg-pal-500 p-8 text-white flex justify-between items-center">
+                            <div>
+                                <h3 className="text-lg font-black uppercase tracking-widest">Définir le Mot de Passe</h3>
+                                <p className="text-white/60 text-[10px] font-black uppercase tracking-widest mt-1 italic">{showSetPasswordModal.nom} {showSetPasswordModal.prenom}</p>
+                            </div>
+                            <button onClick={() => setShowSetPasswordModal(null)} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"><i className="fas fa-times"></i></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Email</label>
+                                <p className="text-sm font-bold text-slate-600">{showSetPasswordModal.email || 'Non défini'}</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nouveau Mot de Passe</label>
+                                <div className="relative">
+                                    <input type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-pal-500 font-mono font-bold text-sm pr-12" placeholder="Min. 6 caractères..." value={newPasswordInput} onChange={e => setNewPasswordInput(e.target.value)} />
+                                    <button onClick={() => {
+                                        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#';
+                                        let gen = 'PAL_';
+                                        for (let i = 0; i < 8; i++) gen += chars.charAt(Math.floor(Math.random() * chars.length));
+                                        setNewPasswordInput(gen);
+                                    }} className="absolute right-2 top-1/2 -translate-y-1/2 text-pal-500 hover:text-pal-600 transition p-2" title="Générer automatiquement">
+                                        <i className="fas fa-magic"></i>
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-slate-400 mt-2"><i className="fas fa-info-circle mr-1"></i> Ce mot de passe sera stocké et visible dans le panneau admin.</p>
+                            </div>
+                            {userPasswords[showSetPasswordModal.id] && (
+                                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                                    <p className="text-[10px] font-black text-amber-600 uppercase mb-1"><i className="fas fa-exclamation-triangle mr-1"></i> Mot de passe actuel</p>
+                                    <code className="text-xs font-mono font-bold text-amber-700">{userPasswords[showSetPasswordModal.id].password}</code>
+                                    <p className="text-[8px] text-amber-400 mt-1">Défini le {new Date(userPasswords[showSetPasswordModal.id].setAt).toLocaleString('fr-FR')}</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-6 bg-slate-50 border-t flex justify-end gap-3">
+                            <button onClick={() => setShowSetPasswordModal(null)} className="px-6 py-3 font-black text-slate-400 uppercase text-[10px]">Annuler</button>
+                            <button onClick={() => handleSetPassword(showSetPasswordModal)} className="bg-pal-500 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] shadow-lg shadow-pal-500/20 hover:bg-pal-600 transition">
+                                <i className="fas fa-save mr-2"></i>Enregistrer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Confirmation de réinitialisation */}
+            {resetConfirm && (() => {
+                const targetUser = users.find(u => u.id === resetConfirm);
+                if (!targetUser) return null;
+                return (
+                    <div className="fixed inset-0 bg-pal-900/70 backdrop-blur-xl flex items-center justify-center z-[300] p-4">
+                        <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in-up">
+                            <div className="p-10 text-center">
+                                <div className="w-20 h-20 bg-amber-50 text-amber-500 rounded-[2rem] flex items-center justify-center text-3xl mx-auto mb-6 border border-amber-100">
+                                    <i className="fas fa-redo"></i>
+                                </div>
+                                <h3 className="text-lg font-black text-slate-800 mb-2">Réinitialiser le mot de passe ?</h3>
+                                <p className="text-sm text-slate-400 font-medium mb-2">{targetUser.nom} {targetUser.prenom}</p>
+                                <p className="text-xs text-slate-400 italic">Un nouveau mot de passe temporaire sera généré automatiquement.</p>
+                            </div>
+                            <div className="p-6 bg-slate-50 border-t flex justify-center gap-4">
+                                <button onClick={() => setResetConfirm(null)} className="px-8 py-3 font-black text-slate-400 uppercase text-[10px] hover:bg-slate-100 rounded-xl transition">Annuler</button>
+                                <button onClick={() => handleResetPassword(targetUser)} className="bg-amber-500 text-white px-8 py-3 rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-amber-600 transition">
+                                    <i className="fas fa-redo mr-2"></i>Confirmer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             
         </div>
     );
